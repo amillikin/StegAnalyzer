@@ -13,27 +13,29 @@
 #include <ctime>
 #include <string>
 using namespace std;
-ifstream inFile;
-ofstream outFile;
 
-struct waveFile {
+struct mstrChnk {
 	// "RIFF" chunk descriptor
-	char chunkID[4];
-	char chunkSize[4];
-	char format[4];
-	// "fmt" sub-chunk
-	char subChunk1ID[4];
-	char subChunk1Size[4];
-	char audioFormat[2];
-	char numChannels[2];
-	char sampleRate[4];
-	char byteRate[4];
-	char blockAlign[2];
-	char bitsPerSample[2];
-	// "data" sub-chunk
-	char subChunk2ID[4];
-	char subChunk2Size[4];
-	// Remaining data in file is raw sound data of size specified by subChunk2Size
+	char chunkID[4];                 //BE: "RIFF" in ASCII (0x52494646)
+	unsigned long chunkSize;         //LE: 36 + subChunk2Size -> (4 + (8 + subChunk1Size) + (8 + subChunk2Size)
+	char format[4];                  //BE: "WAVE" in ASCII (0x57415645)
+};
+struct fmtChnk {
+	// "fmt" sub-chunk: Describes the sound data's format
+	char subChunk1ID[4];             //BE: "fmt" in ASCII (0x666d7420)
+	unsigned long subChunk1Size;     //LE: Size of rest of subchunk following this value. (16 if PCM)
+	unsigned short audioFormat;   //LE: Indicates forms of compression (1:PCM,6:mulaw,7:alaw,257:IBM Mu-Law,258:IBM A-Law,259:ADPCM)
+	unsigned short numChannels;   //LE: Number of Channels: Mono=1, Stereo=2, etc.
+	unsigned long sampleRate;     //LE: Sample Rate: CD commonly = 44100
+	unsigned long byteRate;       //LE: sampleRate*numChannels*bitsPerSample/8
+	unsigned short blockAlign;    //LE: numChannels*bitsPerSample/8
+	unsigned short bitsPerSample; //LE: 8=8bit, 16=16bit, etc.
+};
+struct dataChnk {
+	// "data" sub-chunk: Contains size of data and actual sound data
+	char subChunk2ID[4];             //BE: "data" (0x64617461)
+	unsigned long subChunk2Size;  //LE: numSamples*numChannels*bitsPerSample/8 (size of actual sound data following this value)
+	                                 // LE: Remaining data in file is raw sound data of size specified by subChunk2Size
 };
 
 void prompt()
@@ -44,8 +46,14 @@ void prompt()
 int main(int argc, char* argv[]) {
 	clock_t startTime = clock();
 	double secondsElapsed;
-	char freqMode;
 	errno_t err;
+	ifstream inFile;
+	ofstream outFile;
+	struct mstrChnk masterChunk;
+	struct fmtChnk fmtChunk;
+	struct dataChnk dataChunk;
+	int fileSize;
+	int format, numCh, sampRate, byteRate, blockAlign, bps, soundSize;
 
 	if (argc != 3) {
 		cout << "Incorrect number of arguments supplied." << endl;
@@ -67,27 +75,31 @@ int main(int argc, char* argv[]) {
 		return 1;
 	}
 
-	freqMode = argv[1][1];
-	switch (freqMode) {
-	case 's': cout << "Analyzing bits..." << endl;
-		analyzeSingleBits();
-		break;
-	case 'b': cout << "Analyzing bytes..." << endl;
-		analyzeSingleBytes();
-		break;
-	case 'd': cout << "Analyzing digrams..." << endl;
-		analyzeDigrams();
-		break;
-	case 't': cout << "Analyzing trigrams..." << endl;
-		analyzeTrigrams();
-		break;
-	case 'o': cout << "Analyzing octets..." << endl;
-		analyzeOctets();
-		break;
-	default: cout << "Modes: single-bit (0), single-Byte (1), digram (2), trigram (3), octet (8)" << endl;
-		return 1;
-	}
+	//Get Filesize
+	fileSize = 0;
+	inFile.seekg(0, ios::end);
+	fileSize = inFile.tellg();
+	inFile.seekg(0, ios::beg);
 
+	//Read file 
+	inFile.read((char *)&masterChunk, sizeof(masterChunk));
+	inFile.read((char *)&fmtChunk, sizeof(fmtChunk));
+	for (int i = 0; i < (fmtChunk.subChunk1Size - 16); i++) {
+		inFile.get(); //Extra stuff in format header.. I'll determine if I want to save this later
+	}
+	inFile.read((char *)&dataChunk, sizeof(dataChunk));
+
+	//Output data to file
+	outFile << "File: " << argv[1] << endl;
+	outFile << "Filesize: " << fileSize << endl;
+	outFile << "Format: " << fmtChunk.audioFormat << endl;
+	outFile << "Number of Channels: " << fmtChunk.numChannels << endl;
+	outFile << "Sample Rate: " << fmtChunk.sampleRate << endl;
+	outFile << "Byte Rate: " << fmtChunk.byteRate << endl;
+	outFile << "Block Align: " << fmtChunk.blockAlign << endl;
+	outFile << "Bits Per Sample: " << fmtChunk.bitsPerSample << endl;
+	outFile << "Sound Data Size: " << dataChunk.subChunk2Size << endl;
+	
 	inFile.close();
 	outFile.close();
 
