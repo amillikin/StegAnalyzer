@@ -47,9 +47,9 @@ struct sample {
 	signed short right;
 };
 
-char createByte(int shift, short leftIn, short rightIn, char byteOut) {
-	leftIn |= (leftIn & 0xd) << (7-2*shift);
-	rightIn |= (rightIn & 0xd) << (6-2*shift);
+char createByte(int shift, short leftIn, short rightIn, unsigned char byteOut) {
+	leftIn = (leftIn & 0x01) << (7-2*shift);
+	rightIn = (rightIn & 0x01) << (6-2*shift);
 	byteOut |= leftIn | rightIn;
 	return byteOut;
 }
@@ -120,11 +120,10 @@ int main(int argc, char* argv[]) {
 	outFile << "Song Duration: " << dataChunk.subChunk2Size / fmtChunk.blockAlign / fmtChunk.sampleRate << endl;
 
 	secretSize = dataChunk.subChunk2Size / fmtChunk.numChannels;
-	vector<char> secretMsg;
+	vector<unsigned char> secretMsg;
 	
 	int bitCnt = 0;
-	char byteOut = NULL;
-	char newByte = NULL;
+	unsigned char byteOut = NULL;
 	//Stepping through sound data one sample at a time and formatting for left and right channels
 	for (int sampleCnt = 0; sampleCnt < dataChunk.subChunk2Size/fmtChunk.blockAlign; sampleCnt++) {
 		inFile.read((char *)&sample, sizeof(sample));
@@ -133,8 +132,8 @@ int main(int argc, char* argv[]) {
 		//byteOut = {S0L,S0R,S1L,S1R,S2L,S2R,S3L,S3R}... 
 		byteOut = createByte(bitCnt, sample.left, sample.right, byteOut);
 
-		//If we reach the final bit of a byte, add byte to vector, clear byteOut, and rest bit counter
-		//otherwise, just incremenet bit counter
+		//If we reach the final bit of a byte, add byte to vector, clear byteOut, and reset bit counter
+		//otherwise, incremenet bit counter
 		if (bitCnt == 3) {
 			secretMsg.push_back(byteOut);
 			byteOut = NULL;
